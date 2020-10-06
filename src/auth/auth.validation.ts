@@ -2,32 +2,29 @@ import {
   IsString,
   IsEmail,
   MinLength,
-  IsOptional,
   IsNumber,
-  IsPhoneNumber,
   IsNotEmpty,
 } from "class-validator";
-export class LoginforUser {
-  @IsEmail()
-  email: string;
+
+// tslint:disable-next-line: max-classes-per-file
+export class LoginForUser {
+  @IsString()
+  username: string;
 
   @IsString()
-  @MinLength(8)
   password: string;
 }
 
-export class SignupforUser {
+export class SignUpForUser {
   @IsString()
-  name: string;
+  username: string;
+
+  @IsString()
+  password: string;
+
+  @IsString()
+  usertype: string;
 
   @IsEmail()
-  email: string;
-
-  @IsString()
-  @MinLength(8)
-  password: string;
-}
-
-export class TakeExam {
-
+  emaiil: string
 }

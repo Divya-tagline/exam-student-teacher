@@ -1,151 +1,68 @@
-import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-//import { UserEntity } from '../models/user.entity';
-import { Repository, Like } from 'typeorm';
-import { User, UserRole } from '../models/user.interface';
-import { Observable, from, throwError } from 'rxjs';
-import { switchMap, map, catchError} from 'rxjs/operators';
-import { AuthService } from '../auth/auth.service';
-import { User } from 'src/model/user.model';
+import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
+import * as bcrypt from 'bcrypt';
 import { Model } from 'mongoose';
-//import {paginate, Pagination, IPaginationOptions} from 'nestjs-typeorm-paginate';
 
+import { LoginDTO, RegisterDTO } from '../auth/auth.dto';
+import { Payload } from '../types/payload';
+import { User } from '../types/user';
+const saltRounds = 10;
 @Injectable()
 export class UserService {
+  constructor(@InjectModel('User') private readonly userModel: Model<User>) {}
 
-    constructor(
-        @InjectModel("User") private readonly StudentModel: Model<User>,
-        private authService: AuthService
-    ) {}
-
-    create(user: User): Observable<User> {
-        return this.authService.hashPassword(user.password).pipe(
-            switchMap((passwordHash: string) => {
-                const newUser = new UserEntity();
-                newUser.name = user.name;
-                newUser.username = user.username;
-                newUser.email = user.email;
-                newUser.password = passwordHash;
-                newUser.role = UserRole.USER;
-
-                return from(this.userRepository.save(newUser)).pipe(
-                    map((user: User) => {
-                        const {password, ...result} = user;
-                        return result;
-                    }),
-                    catchError(err => throwError(err))
-                )
-            })
-        )
+  async create(userDTO: RegisterDTO) {
+    const { username } = userDTO;
+    const user = await this.userModel.findOne({ username });
+    if (user) {
+      throw new HttpException('User already exists', HttpStatus.BAD_REQUEST);
     }
+    const hash = bcrypt.hashSync(userDTO.password, saltRounds);
+    userDTO.password = hash;
+    const createdUser = new this.userModel(userDTO);
+    await createdUser.save();
+    return this.sanitizeUser(createdUser);
+  }
 
-    findOne(id: number): Observable<User> {
-        return from(this.userRepository.findOne({id}, {relations: ['blogEntries']})).pipe(
-            map((user: User) => {
-                const {password, ...result} = user;
-                return result;
-            } )
-        )
+  async find() {
+    return await this.userModel.find(); //
+  }
+
+  async findByLogin(userDTO: LoginDTO) {
+    const { username, password } = userDTO;
+    const user = await this.userModel
+      .findOne({ username })
+      .select('username password seller created address');
+    // console.log("user=>" + user);
+    if (!user) {
+      throw new HttpException(
+        'Invalid credentials not found user',
+        HttpStatus.UNAUTHORIZED,
+      );
     }
-
-    findAll(): Observable<User[]> {
-        return from(this.userRepository.find()).pipe(
-            map((users: User[]) => {
-                users.forEach(function (v) {delete v.password});
-                return users;
-            })
-        );
+    const comparepassworn = await bcrypt.compare(password, user.password);
+    if (comparepassworn) {
+      return this.sanitizeUser(user);
+    } else {
+      throw new HttpException(
+        'Invalid credentials not match password',
+        HttpStatus.UNAUTHORIZED,
+      );
     }
+  }
 
-    paginate(options: IPaginationOptions): Observable<Pagination<User>> {
-        return from(paginate<User>(this.userRepository, options)).pipe(
-            map((usersPageable: Pagination<User>) => {
-                usersPageable.items.forEach(function (v) {delete v.password});
-                return usersPageable;
-            })
-        )
-    }
+  async findByPayload(payload: Payload) {
+    const { username } = payload;
+    return await this.userModel.findOne({ username });
+  }
 
-    paginateFilterByUsername(options: IPaginationOptions, user: User): Observable<Pagination<User>>{
-        return from(this.userRepository.findAndCount({
-            skip: options.page * options.limit || 0,
-            take: options.limit || 10,
-            order: {id: "ASC"},
-            select: ['id', 'name', 'username', 'email', 'role'],
-            where: [
-                { username: Like(`%${user.username}%`)}
-            ]
-        })).pipe(
-            map(([users, totalUsers]) => {
-                const usersPageable: Pagination<User> = {
-                    items: users,
-                    links: {
-                        first: options.route + `?limit=${options.limit}`,
-                        previous: options.route + ``,
-                        next: options.route + `?limit=${options.limit}&page=${options.page +1}`,
-                        last: options.route + `?limit=${options.limit}&page=${Math.ceil(totalUsers / options.limit)}`
-                    },
-                    meta: {
-                        currentPage: options.page,
-                        itemCount: users.length,
-                        itemsPerPage: options.limit,
-                        totalItems: totalUsers,
-                        totalPages: Math.ceil(totalUsers / options.limit)
-                    }
-                };              
-                return usersPageable;
-            })
-        )
-    }
+  sanitizeUser(user: User) {
+    const sanitized = user.toObject();
+    delete sanitized['password'];
+    return sanitized;
+  }
 
-    deleteOne(id: number): Observable<any> {
-        return from(this.userRepository.delete(id));
-    }
-
-    updateOne(id: number, user: User): Observable<any> {
-        delete user.email;
-        delete user.password;
-        delete user.role;
-
-        return from(this.userRepository.update(id, user)).pipe(
-            switchMap(() => this.findOne(id))
-        );
-    }
-
-    updateRoleOfUser(id: number, user: User): Observable<any> {
-        return from(this.userRepository.update(id, user));
-    }
-
-    login(user: User): Observable<string> {
-        return this.validateUser(user.email, user.password).pipe(
-            switchMap((user: User) => {
-                if(user) {
-                    return this.authService.generateJWT(user).pipe(map((jwt: string) => jwt));
-                } else {
-                    return 'Wrong Credentials';
-                }
-            })
-        )
-    }
-
-    validateUser(email: string, password: string): Observable<User> {
-        return from(this.userRepository.findOne({email}, {select: ['id', 'password', 'name', 'username', 'email', 'role', 'profileImage']})).pipe(
-            switchMap((user: User) => this.authService.comparePasswords(password, user.password).pipe(
-                map((match: boolean) => {
-                    if(match) {
-                        const {password, ...result} = user;
-                        return result;
-                    } else {
-                        throw Error;
-                    }
-                })
-            ))
-        )
-
-    }
-
-    findByMail(email: string): Observable<User> {
-        return from(this.userRepository.findOne({email}));
-    }
+  async addtoken(token, user) {
+    return await this.userModel.findByIdAndUpdate(user._id, { token: token });
+  }
 }

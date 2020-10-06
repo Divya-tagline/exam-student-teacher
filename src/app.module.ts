@@ -1,43 +1,25 @@
-
-import { Module, forwardRef } from '@nestjs/common';
-import { JwtModule} from '@nestjs/jwt';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { AuthService } from './services/auth.service';
-import { RolesGuard } from './guards/roles.guard';
-import { JwtAuthGuard } from './guards/jwt-guard';
-import { JwtStrategy } from './guards/jwt-strategy';
-import { UserModule } from 'src/user/user.module';
-
-@Module({
-    imports: [
-        forwardRef(() => UserModule),
-        JwtModule.registerAsync({
-            imports: [ConfigModule],
-            inject: [ConfigService],
-            useFactory: async (configService: ConfigService) => ({
-                secret: configService.get('JWT_SECRET'),
-                signOptions: {expiresIn: '10000s'}
-            })
-        })
-    ],+-
-    providers: [AuthService, RolesGuard, JwtAuthGuard, JwtStrategy ],
-    exports: [AuthService]
-})
-export class AuthModule { }
-
-/*import { Module } from "@nestjs/common";
-import { AppController } from "./app.controller";
-import { AppService } from "./app.service";
-import { StudentModule } from "./Student/student.module";
-import { TeacherModule } from "./Teacher/teacher.module";
+import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-//import {AuthModule} from "./auth/auth.module";
 
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
+import { AuthModule } from './auth/auth.module';
+import { UserModule } from './User/user.module';
+import { StudentModule } from './Student/student.module';
+import { TeacherModule } from './Teacher/teacher.module';
+//import { SharedModule } from './shared/shared.module';
+//import { ProductModule } from './product/product.module';
+//import { OrderModule } from './order/order.module';
 
 @Module({
-  imports: [TeacherModule, StudentModule,MongooseModule.forRoot(
-    "mongodb://localhost/project")],
+  imports: [
+    MongooseModule.forRoot('mongodb://localhost:27018/test'),
+    AuthModule,
+    UserModule,
+    StudentModule,
+    TeacherModule,
+  ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}*/
+export class AppModule {}
